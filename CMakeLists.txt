@@ -22,7 +22,6 @@ set(ic_example_sources  test/example.c test/test_colors.c)
 # -----------------------------------------------------------------------------
 set(ic_cflags)
 set(ic_cdefs)
-set(ic_install_dir)
 
 if(IC_SEPARATE_OBJS)
   list(APPEND ic_cdefs IC_SEPARATE_OBJS)
@@ -148,7 +147,6 @@ target_compile_options(isocline PRIVATE ${ic_cflags})
 target_compile_definitions(isocline PRIVATE ${ic_cdefs})
 target_include_directories(isocline PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${ic_install_dir}/include>
 )
 
 add_executable(example test/example.c)
@@ -160,3 +158,32 @@ add_executable(test_colors test/test_colors.c)
 target_compile_options(test_colors PRIVATE ${ic_cflags})
 target_include_directories(test_colors PRIVATE include)
 target_link_libraries(test_colors PRIVATE isocline)
+
+install(
+  TARGETS isocline
+  EXPORT IsoclineTargets
+  DESTINATION lib)
+install(DIRECTORY include/ DESTINATION include)
+
+## Generate export information for use with find_package()
+install(EXPORT IsoclineTargets
+  FILE IsoclineTargets.cmake
+  DESTINATION lib/cmake/isocline
+)
+include(CMakePackageConfigHelpers)
+configure_package_config_file(${CMAKE_CURRENT_SOURCE_DIR}/Config.cmake.in
+  "${CMAKE_CURRENT_BINARY_DIR}/IsoclineConfig.cmake"
+  INSTALL_DESTINATION lib/cmake/isocline
+  NO_SET_AND_CHECK_MACRO
+  NO_CHECK_REQUIRED_COMPONENTS_MACRO
+  )
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/IsoclineConfigVersion.cmake"
+  VERSION "${isocline_VERSION_MAJOR}.${isocline_VERSION_MINOR}"
+  COMPATIBILITY AnyNewerVersion
+)
+install(FILES
+  ${CMAKE_CURRENT_BINARY_DIR}/IsoclineConfig.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/IsoclineConfigVersion.cmake
+  DESTINATION lib/cmake/isocline
+  )
