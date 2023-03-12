@@ -2,7 +2,7 @@
 # Copyright (c) 2021, Daan Leijen
 # -----------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.10)
-project(libisocline C CXX ASM)
+project(libisocline LANGUAGES C CXX ASM VERSION 1.0.4)
 
 set(CMAKE_C_STANDARD   99)
 set(CMAKE_CXX_STANDARD 11)
@@ -13,7 +13,6 @@ option(IC_DEBUG_ASAN        "Build with address sanitizer" OFF)
 option(IC_DEBUG_MSG         "Enable printing debug messages stderr (only if also ISOCLINE_DEBUG=1 is set in the environment)" ON)
 option(IC_SEPARATE_OBJS     "Compile with separate object files instead of one (warning: exports internal symbols)" OFF)
 
-set(ic_version "0.1")
 set(ic_sources          src/isocline.c)    
 set(ic_example_sources  test/example.c test/test_colors.c)
 
