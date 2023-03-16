@@ -84,7 +84,7 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
   /// Substract length of entry at index from all elems pointers after index
-  for (ssize_t i = idx+1; i < h->count; i++) {
+  for (ssize_t i = idx+1; i <= h->count; i++) {
     h->elems[i-1] -= h->elems[idx+1] - h->elems[idx];
   }
   /// Update file size
