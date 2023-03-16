@@ -13,8 +13,12 @@ option(IC_DEBUG_ASAN        "Build with address sanitizer" OFF)
 option(IC_DEBUG_MSG         "Enable printing debug messages stderr (only if also ISOCLINE_DEBUG=1 is set in the environment)" ON)
 option(IC_SEPARATE_OBJS     "Compile with separate object files instead of one (warning: exports internal symbols)" OFF)
 
-set(ic_sources          src/isocline.c)    
-set(ic_example_sources  test/example.c test/test_colors.c)
+set(ic_sources             src/isocline.c)
+set(ic_example_sources     test/example.c test/test_colors.c)
+set(ic_hist_impl_sources   src/history.c)
+if(IC_HIST_IMPL MATCHES IC_HIST_IMPL_MMAP)
+  set(ic_hist_impl_sources src/history_mmap.c)
+endif()
 
 # -----------------------------------------------------------------------------
 # Initial definitions
@@ -32,7 +36,7 @@ if(IC_SEPARATE_OBJS)
               src/completers.c
               src/editline.c
               src/highlight.c
-              src/history.c
+              ${ic_hist_impl_sources}
               src/stringbuf.c
               src/term.c
               src/tty_esc.c
