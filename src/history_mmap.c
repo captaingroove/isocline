@@ -16,7 +16,9 @@
 #include "history.h"
 #include "stringbuf.h"
 
-#define IC_MAX_HISTORY (100000)
+#define IC_MAX_HISTORY   (100000)
+#define IC_AVG_ENTRY_LEN (100)
+#define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
 
 struct history_s {
   ssize_t      len;               // size limit of elems (max number of entries)
@@ -24,6 +26,7 @@ struct history_s {
   const char** elems;             // history items (up to count)
   const char*  fname;             // history file name
   int          fd;                // history file descriptor
+  size_t       fsize;             // history file size
   size_t       fmem_size;         // size of memory mapped region
   void*        fmem;              // memory mapped to history file
   alloc_t*     mem;               // memory allocator
@@ -61,26 +64,41 @@ ic_private ssize_t history_count(const history_t* h) {
 }
 
 //-------------------------------------------------------------
-// push/clear
+// push / delete
 //-------------------------------------------------------------
 
 ic_private bool history_update( history_t* h, const char* entry ) {
   if (entry==NULL) return false;
   history_remove_last(h);
   history_push(h,entry);
-  //debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
+  debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
   return true;
 }
 
+/// FIXME implement history_delete_at()
 static void history_delete_at( history_t* h, ssize_t idx ) {
   if (idx < 0 || idx >= h->count) return;
-  // mem_free(h->mem, h->elems[idx]);
-  for(ssize_t i = idx+1; i < h->count; i++) {
-    h->elems[i-1] = h->elems[i];
+  /// Move memory entries after index to index
+  /// FIXME size of memory block that is copied is not correct
+  if (idx < h->count-1) {
+    memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
+  /// Substract length of entry at index from all elems pointers after index
+  for (ssize_t i = idx+1; i < h->count; i++) {
+    h->elems[i-1] -= h->elems[idx+1] - h->elems[idx];
+  }
+  /// Update file size
+
+  // mem_free(h->mem, h->elems[idx]);
+  // for(ssize_t i = idx+1; i < h->count; i++) {
+    // h->elems[i-1] = h->elems[i];
+  // }
+
   h->count--;
 }
 
+/// FIXME implement duplicate removal with memory map
+/// FIXME implement insertion of an entry at the end of the history file
 ic_private bool history_push( history_t* h, const char* entry ) {
   if (h->len <= 0 || entry==NULL)  return false;
   // remove any older duplicate
@@ -103,6 +121,7 @@ ic_private bool history_push( history_t* h, const char* entry ) {
 }
 
 
+/// FIXME implement history_remove_last_n()
 static void history_remove_last_n( history_t* h, ssize_t n ) {
   if (n <= 0) return;
   if (n > h->count) n = h->count;
@@ -126,12 +145,16 @@ ic_private const char* history_get( const history_t* h, ssize_t n ) {
   return h->elems[h->count - n - 1];
 }
 
+/// FIXME replace strstr() with s.th. like GNU libc memmem()
 ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
   const char* p = NULL;
   ssize_t i;
   if (backward) {
     for( i = from; i < h->count; i++ ) {
-      p = strstr( history_get(h,i), search);
+      // p = strstr( history_get(h,i), search);
+      // p = memem(
+        // history_get(h,i), history_get(h,i+1) - history_get(h,i),
+        // search, strlen(search));
       if (p != NULL) break;
     }
   }
@@ -250,15 +273,22 @@ ic_private void history_load( history_t* h ) {
   if (h->fd < 0) return;
   struct stat statbuf;
   if (fstat(h->fd, &statbuf) < 0) return;
-  h->fmem_size = (size_t)statbuf.st_size;
-  if (h->fmem_size == 0) return;
+  h->fsize = (size_t)statbuf.st_size;
+  if (h->fsize == 0) return;
+  h->fmem_size = IC_MMAP_SIZE;
   h->fmem = mmap(NULL, h->fmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, h->fd, 0);
   if (h->fmem == MAP_FAILED) return;
-  char *nl = h->fmem;
-  /// FIXME handle empty first line (file begins with '\n')
-  // h->elems[h->len] = h->fmem;
-  while((nl = memchr(nl + 1, '\n', h->fmem_size - (long unsigned int)(nl - (char *)h->fmem)))) {
-    h->elems[h->count] = nl + 1;
+  char *base = h->fmem;
+  size_t bytes_scanned = 0;
+  while(bytes_scanned < h->fsize) {
+    char *nl = memchr(base, '\n', h->fsize - bytes_scanned);
+    if (!nl) {
+      debug_msg("warning: history file doesn't end with a newline\n");
+      break;
+    }
+    h->elems[h->count] = base;
+    bytes_scanned += (size_t)(nl - base + 1);
+    base = nl + 1;
     h->count++;
   }
   debug_msg("scanned %d history entries\n", h->count);
