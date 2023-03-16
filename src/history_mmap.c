@@ -19,15 +19,15 @@
 #define IC_MAX_HISTORY (100000)
 
 struct history_s {
-  ssize_t      len;            // size limit of elems (max number of entries)
-  ssize_t      count;          // current number of entries in use
-  const char** elems;          // history items (up to count)
-  const char*  fname;          // history file
-  int    fd;                   // history file descriptor
-  size_t fmem_size;            // size of memory mapped region
-  void*  fmem;                 // memory mapped to history file
-  alloc_t* mem;                // memory allocator
-  bool allow_duplicates;       // allow duplicate entries?
+  ssize_t      len;               // size limit of elems (max number of entries)
+  ssize_t      count;             // current number of entries in use
+  const char** elems;             // history items (up to count)
+  const char*  fname;             // history file name
+  int          fd;                // history file descriptor
+  size_t       fmem_size;         // size of memory mapped region
+  void*        fmem;              // memory mapped to history file
+  alloc_t*     mem;               // memory allocator
+  bool         allow_duplicates;  // allow duplicate entries?
 };
 
 ic_private history_t* history_new( alloc_t* mem ) {
@@ -56,7 +56,7 @@ ic_private bool history_enable_duplicates( history_t* h, bool enable ) {
   return prev;
 }
 
-ic_private ssize_t  history_count(const history_t* h) {
+ic_private ssize_t history_count(const history_t* h) {
   return h->count;
 }
 
