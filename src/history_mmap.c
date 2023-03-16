@@ -97,7 +97,7 @@ ic_private bool history_push( history_t* h, const char* entry ) {
     history_delete_at(h,0);    
   }
   assert(h->count < h->len);
-  h->elems[h->count] = mem_strdup(h->mem,entry);
+  // h->elems[h->count] = mem_strdup(h->mem,entry);
   h->count++;
   return true;
 }
@@ -159,8 +159,8 @@ ic_private void history_load_from( history_t* h, const char* fname, long max_ent
     return;
   }
   if (max_entries < 0 || max_entries > IC_MAX_HISTORY) max_entries = IC_MAX_HISTORY;
-  h->elems = (const char**)mem_zalloc_tp_n(h->mem, char*, max_entries );
-  if (h->elems == NULL) return;
+  // h->elems = (const char**)mem_zalloc_tp_n(h->mem, char*, max_entries );
+  // if (h->elems == NULL) return;
   h->len = max_entries;
   history_load(h);
 }
