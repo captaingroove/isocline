@@ -79,7 +79,7 @@ ic_private bool history_update( history_t* h, const char* entry ) {
 static void history_delete_at( history_t* h, ssize_t idx ) {
   if (idx < 0 || idx >= h->count) return;
   /// Move memory entries after index to index
-  /// FIXME size of memory block that is copied is not correct
+  /// h->elems[h->count] points to the end of the file
   if (idx < h->count-1) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
@@ -88,6 +88,7 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
     h->elems[i-1] -= h->elems[idx+1] - h->elems[idx];
   }
   /// Update file size
+  ftruncate(h->fd, (off_t)h->fsize);
 
   // mem_free(h->mem, h->elems[idx]);
   // for(ssize_t i = idx+1; i < h->count; i++) {
@@ -285,6 +286,8 @@ ic_private void history_load( history_t* h ) {
     base = nl + 1;
     h->count++;
   }
+  /// Save a pointer to the end of the file
+  h->elems[h->count] = base - 1;
   debug_msg("scanned %d history entries\n", h->count);
   // stringbuf_t* sbuf = sbuf_new(h->mem);
   // if (sbuf != NULL) {
