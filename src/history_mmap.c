@@ -303,9 +303,10 @@ ic_private void history_load( history_t* h ) {
 
 ic_private void history_save( const history_t* h ) {
   if (h->fd < 0) return;
-  #ifndef _WIN32
-  chmod(h->fname,S_IRUSR|S_IWUSR);
-  #endif
+  msync(h->fmem, h->fsize, MS_ASYNC);
+  // #ifndef _WIN32
+  // chmod(h->fname,S_IRUSR|S_IWUSR);
+  // #endif
   // stringbuf_t* sbuf = sbuf_new(h->mem);
   // if (sbuf != NULL) {
     // for( int i = 0; i < h->count; i++ )  {
