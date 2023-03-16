@@ -23,7 +23,7 @@
 struct history_s {
   ssize_t      len;               // size limit of elems (max number of entries)
   ssize_t      count;             // current number of entries in use
-  const char** elems;             // history items (up to count)
+  const char** elems;             // history items (up to count), elems[count] = eof
   const char*  fname;             // history file name
   int          fd;                // history file descriptor
   size_t       fsize;             // history file size
@@ -75,7 +75,6 @@ ic_private bool history_update( history_t* h, const char* entry ) {
   return true;
 }
 
-/// FIXME implement history_delete_at()
 static void history_delete_at( history_t* h, ssize_t idx ) {
   if (idx < 0 || idx >= h->count) return;
   /// Move memory entries after index to index
@@ -83,11 +82,13 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
   if (idx < h->count-1) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
+  size_t entry_size = (size_t)(h->elems[idx+1] - h->elems[idx]);
   /// Substract length of entry at index from all elems pointers after index
   for (ssize_t i = idx+1; i <= h->count; i++) {
-    h->elems[i-1] -= h->elems[idx+1] - h->elems[idx];
+    h->elems[i-1] -= entry_size;
   }
   /// Update file size
+  h->fsize -= entry_size;
   ftruncate(h->fd, (off_t)h->fsize);
 
   // mem_free(h->mem, h->elems[idx]);
@@ -98,7 +99,7 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
   h->count--;
 }
 
-/// FIXME implement duplicate removal with memory map
+/// FIXME implement duplicate removal with memory map (replace strcmp())
 /// FIXME implement insertion of an entry at the end of the history file
 ic_private bool history_push( history_t* h, const char* entry ) {
   if (h->len <= 0 || entry==NULL)  return false;
