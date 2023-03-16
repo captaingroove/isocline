@@ -51,6 +51,9 @@ int main()
   // inline hinting is enabled by default
   // ic_enable_hint(false);
 
+  /// Allowing duplicates for debugging purposes, for now
+  ic_enable_history_duplicates(true);
+
   // run until empty input
   char* input;
   while((input = ic_readline("isoclinε")) != NULL)    // ctrl-d returns NULL (as well as errors)

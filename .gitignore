@@ -15,3 +15,4 @@ doc/html/
 history.txt
 isocline.debug.txt
 cscope.out
+.gdb_history
