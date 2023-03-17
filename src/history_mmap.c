@@ -19,7 +19,7 @@
 
 /// TODO properly handle max history entries and max history file size
 #define IC_MAX_HISTORY        (1e5)
-#define IC_MAX_HISTFILE_SIZE  (1024)
+#define IC_MAX_HISTFILE_SIZE  (1024*1e4)
 // #define IC_MAX_HISTFILE_SIZE  (1e6)
 // #define IC_AVG_ENTRY_LEN (100)
 // #define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
