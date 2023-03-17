@@ -16,9 +16,12 @@
 #include "history.h"
 #include "stringbuf.h"
 
-#define IC_MAX_HISTORY   (100000)
-#define IC_AVG_ENTRY_LEN (100)
-#define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
+/// TODO properly handle max history entries and max history file size
+#define IC_MAX_HISTORY        (1e5)
+#define IC_MAX_HISTFILE_SIZE  (1024)
+// #define IC_MAX_HISTFILE_SIZE  (1e6)
+// #define IC_AVG_ENTRY_LEN (100)
+// #define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
 
 struct history_s {
   ssize_t      len;               // size limit of elems (max number of entries)
@@ -67,11 +70,22 @@ ic_private ssize_t history_count(const history_t* h) {
 // push / delete
 //-------------------------------------------------------------
 
+/// TODO properly implement dynamic history file size
+static void update_file_size( history_t *h, size_t delta_size )
+{
+  (void)h; (void)delta_size;
+  // h->fsize += delta_size;
+  // ftruncate(h->fd, (off_t)h->fsize);
+}
+
 ic_private bool history_update( history_t* h, const char* entry ) {
   if (entry==NULL) return false;
-  history_remove_last(h);
+  /// FIXME why do we need to remove last entry here?
+  // history_remove_last(h);
   history_push(h,entry);
-  debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
+  //debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
+  // debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,h->count-1));
+  msync(h->fmem, h->fsize, MS_SYNC);
   return true;
 }
 
@@ -87,9 +101,7 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
   for (ssize_t i = idx+1; i <= h->count; i++) {
     h->elems[i-1] -= entry_size;
   }
-  /// Update file size
-  h->fsize -= entry_size;
-  ftruncate(h->fd, (off_t)h->fsize);
+  update_file_size(h, -entry_size);
 
   // mem_free(h->mem, h->elems[idx]);
   // for(ssize_t i = idx+1; i < h->count; i++) {
@@ -99,9 +111,11 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
   h->count--;
 }
 
-/// FIXME implement duplicate removal with memory map (replace strcmp())
-/// FIXME implement insertion of an entry at the end of the history file
+/// TODO do character conversion here
+/// TODO implement duplicate removal with memory map (replace strcmp())
 ic_private bool history_push( history_t* h, const char* entry ) {
+  ssize_t entry_size = ic_strlen(entry);
+  if (entry_size == 0) return true;
   if (h->len <= 0 || entry==NULL)  return false;
   // remove any older duplicate
   if (!h->allow_duplicates) {
@@ -117,19 +131,36 @@ ic_private bool history_push( history_t* h, const char* entry ) {
     history_delete_at(h,0);    
   }
   assert(h->count < h->len);
+
   // h->elems[h->count] = mem_strdup(h->mem,entry);
+
+  debug_msg("\npush: %s [%d]\n", entry, entry_size);
+  char *entry_p = (char*)h->elems[h->count] + 1;
+  ic_memcpy(entry_p, entry, entry_size);
+  /// Set eof pointer pointing to last newline in file,
+  /// which is the end of the new entry
+  char *eof_p = entry_p + entry_size;
+  *eof_p = '\n';
   h->count++;
+  h->elems[h->count] = eof_p;
+  update_file_size(h, (size_t)(entry_size + 1));
   return true;
 }
 
 
-/// FIXME implement history_remove_last_n()
 static void history_remove_last_n( history_t* h, ssize_t n ) {
   if (n <= 0) return;
   if (n > h->count) n = h->count;
+
   // for( ssize_t i = h->count - n; i < h->count; i++) {
     // mem_free( h->mem, h->elems[i] );
   // }
+
+  /// Possibly set elems to 0 beyond end of n-th element
+  /// Update file size
+  size_t entry_size = (size_t)(h->elems[h->count] - h->elems[h->count-n]);
+  update_file_size(h, -entry_size);
+
   h->count -= n;
   assert(h->count >= 0);    
 }
@@ -142,12 +173,13 @@ ic_private void history_clear(history_t* h) {
   history_remove_last_n( h, h->count );
 }
 
+/// TODO do character conversion here
 ic_private const char* history_get( const history_t* h, ssize_t n ) {
   if (n < 0 || n >= h->count) return NULL;
   return h->elems[h->count - n - 1];
 }
 
-/// FIXME replace strstr() with s.th. like GNU libc memmem()
+/// TODO replace strstr() with s.th. like GNU libc memmem()
 ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
   const char* p = NULL;
   ssize_t i;
@@ -270,8 +302,15 @@ ic_private void history_load( history_t* h ) {
   struct stat statbuf;
   if (fstat(h->fd, &statbuf) < 0) return;
   h->fsize = (size_t)statbuf.st_size;
-  if (h->fsize == 0) return;
-  h->fmem_size = IC_MMAP_SIZE;
+  // if (h->fsize == 0) return;
+
+  /// FIXME history file size should by dynamic
+  h->fsize = IC_MAX_HISTFILE_SIZE;
+  ftruncate(h->fd, (off_t)h->fsize);
+
+  /// TODO need to care for memory alignment?
+  // h->fmem_size = IC_MMAP_SIZE;
+  h->fmem_size = IC_MAX_HISTFILE_SIZE;
   h->fmem = mmap(NULL, h->fmem_size, PROT_READ | PROT_WRITE, MAP_SHARED, h->fd, 0);
   if (h->fmem == MAP_FAILED) return;
   char *base = h->fmem;
@@ -279,7 +318,9 @@ ic_private void history_load( history_t* h ) {
   while(bytes_scanned < h->fsize) {
     char *nl = memchr(base, '\n', h->fsize - bytes_scanned);
     if (!nl) {
-      debug_msg("warning: history file doesn't end with a newline\n");
+      /// FIXME this warning doesn't make sense with a fixed size
+      /// memory mapped history file
+      // debug_msg("warning: history file doesn't end with a newline\n");
       break;
     }
     h->elems[h->count] = base;
@@ -287,7 +328,7 @@ ic_private void history_load( history_t* h ) {
     base = nl + 1;
     h->count++;
   }
-  /// Save a pointer to the end of the file
+  /// Save a pointer to the end of the file (last newline)
   h->elems[h->count] = base - 1;
   debug_msg("scanned %d history entries\n", h->count);
   // stringbuf_t* sbuf = sbuf_new(h->mem);
@@ -301,7 +342,7 @@ ic_private void history_load( history_t* h ) {
 
 ic_private void history_save( const history_t* h ) {
   if (h->fd < 0) return;
-  msync(h->fmem, h->fsize, MS_ASYNC);
+  msync(h->fmem, h->fsize, MS_SYNC);
   // #ifndef _WIN32
   // chmod(h->fname,S_IRUSR|S_IWUSR);
   // #endif
