@@ -24,6 +24,9 @@
 // #define IC_AVG_ENTRY_LEN (100)
 // #define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
 
+/// TODO put history_s along with all allocated members (elems, fname, fmem)
+/// into shared memory, so that all processes that are reading and writing
+/// to the same history file share the same state.
 struct history_s {
   ssize_t      len;               // size limit of elems (max number of entries)
   ssize_t      count;             // current number of entries in use
@@ -187,7 +190,13 @@ ic_private void history_clear(history_t* h) {
 /// TODO do character conversion here
 ic_private const char* history_get( const history_t* h, ssize_t n ) {
   if (n < 0 || n >= h->count) return NULL;
-  return h->elems[h->count - n - 1];
+  ssize_t i = h->count - n;
+  ssize_t entry_size = h->elems[i+1] - h->elems[i];
+  char* ret = mem_zalloc(h->mem, entry_size);
+  memcpy(ret, h->elems[i], entry_size - 1);
+  debug_msg("history_get at [%d]: %s [%d]\n", i, ret, entry_size - 1);
+  // ret[entry_size] = '\0';
+  return ret;
 }
 
 static const char *sstrstr(const char *haystack, const char *needle, ssize_t length)
@@ -212,34 +221,40 @@ static const char *sstrstr(const char *haystack, const char *needle, ssize_t len
 ///   hpos: position in found history entry where search string was found
 ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
   const char* p = NULL;
+  const char *hi = NULL;
   ssize_t i;
   if (backward) {
     for( i = from; i < h->count; i++ ) {
+      hi = h->elems[h->count - i - 1];
       // p = strstr( history_get(h,i), search);
       // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
         // history_get(h,i), history_get(h,i+1) - history_get(h,i),
         // search, strlen(search));
       /// Do a 'begin with' search
-      if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
+      // if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
+      if (memcmp( hi, search, strlen(search)) == 0) p = hi;
       if (p != NULL) break;
     }
   }
   else {
     for( i = from; i >= 0; i-- ) {
+      hi = h->elems[h->count - i - 1];
       // p = strstr( history_get(h,i), search);
       // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
         // history_get(h,i), history_get(h,i+1) - history_get(h,i),
         // search, strlen(search));
       /// Do a 'begin with' search
-      if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
+      // if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
+      if (memcmp( hi, search, strlen(search)) == 0) p = hi;
       if (p != NULL) break;
     }
   }
   if (p == NULL) return false;
   if (hidx != NULL) *hidx = i;
-  if (hpos != NULL) *hpos = (p - history_get(h,i));
+  // if (hpos != NULL) *hpos = (p - history_get(h,i));
+  if (hpos != NULL) *hpos = (p - hi);
   return true;
 }
 

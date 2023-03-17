@@ -17,7 +17,7 @@ static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs )
     eb->modified = false;    
   }
   const char* entry = history_get(env->history,eb->history_idx + ofs);
-  // debug_msg( "edit: history: at: %d + %d, found: %s\n", eb->history_idx, ofs, entry);
+  debug_msg( "edit: history: at: %d + %d, found: %s\n", eb->history_idx, ofs, entry);
   if (entry == NULL) {
     term_beep(env->term);
   }
@@ -34,6 +34,9 @@ static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs )
     }
     edit_refresh(env, eb);
   }
+#ifdef IC_HIST_IMPL_MMAP
+  mem_free(env->mem, entry);
+#endif
 }
 
 static void edit_history_prev(ic_env_t* env, editor_t* eb) {
@@ -240,6 +243,9 @@ again:
   ic_enable_hint(old_hint);
   edit_refresh(env,eb);
   if (c != 0) tty_code_pushback(env->tty, c);
+#ifdef IC_HIST_IMPL_MMAP
+  mem_free(env->mem, hentry);
+#endif
 }
 
 // Start an incremental search with the current word 

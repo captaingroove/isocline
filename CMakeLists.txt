@@ -18,6 +18,7 @@ set(ic_example_sources     test/example.c test/test_colors.c)
 set(ic_hist_impl_sources   src/history.c)
 if(IC_HIST_IMPL MATCHES IC_HIST_IMPL_MMAP)
   set(ic_hist_impl_sources src/history_mmap.c)
+  add_definitions(-DIC_HIST_IMPL_MMAP)
 endif()
 
 # -----------------------------------------------------------------------------
