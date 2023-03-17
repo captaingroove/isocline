@@ -222,8 +222,9 @@ ic_private bool history_search( const history_t* h, ssize_t from /*including*/, 
   const char *hi = NULL;
   ssize_t i;
   if (backward) {
-    for( i = from; i < h->count; i++ ) {
-      hi = h->elems[h->count - i - 1];
+    for( i = from; i <= h->count; i++ ) {
+      // debug_msg("search back at %d\n", i);
+      hi = h->elems[h->count - i];
       // p = strstr( history_get(h,i), search);
       // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
@@ -237,7 +238,8 @@ ic_private bool history_search( const history_t* h, ssize_t from /*including*/, 
   }
   else {
     for( i = from; i >= 0; i-- ) {
-      hi = h->elems[h->count - i - 1];
+      // debug_msg("search forward at %d\n", i);
+      hi = h->elems[h->count - i];
       // p = strstr( history_get(h,i), search);
       // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
