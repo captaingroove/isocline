@@ -132,7 +132,6 @@ ic_private bool history_push( history_t* h, const char* entry ) {
       if (entry_size == elem_size) debug_msg("found entry %d with same size\n", i);
       if (entry_size == elem_size && memcmp(h->elems[i], entry, (size_t)entry_size) == 0) {
         debug_msg("deleting entry %d\n", i);
-        /// FIXME disabled for now
         history_delete_at(h,i);
       }
     }
@@ -206,26 +205,35 @@ static const char *sstrstr(const char *haystack, const char *needle, ssize_t len
     return NULL;
 }
 
+/// FIXME search ruins the prompt ...
+/// FIXME search strings are pushed to history
+/// Returns:
+///   hidx: index of history entry found
+///   hpos: position in found history entry where search string was found
 ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
   const char* p = NULL;
   ssize_t i;
   if (backward) {
     for( i = from; i < h->count; i++ ) {
       // p = strstr( history_get(h,i), search);
-      p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
+      // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
         // history_get(h,i), history_get(h,i+1) - history_get(h,i),
         // search, strlen(search));
+      /// Do a 'begin with' search
+      if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
       if (p != NULL) break;
     }
   }
   else {
     for( i = from; i >= 0; i-- ) {
       // p = strstr( history_get(h,i), search);
-      p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
+      // p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
       // p = memmem(
         // history_get(h,i), history_get(h,i+1) - history_get(h,i),
         // search, strlen(search));
+      /// Do a 'begin with' search
+      if (memcmp( history_get(h,i), search, strlen(search)) == 0) p = history_get(h, i);
       if (p != NULL) break;
     }
   }
