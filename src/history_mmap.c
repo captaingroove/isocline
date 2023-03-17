@@ -103,6 +103,7 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
   /// Move memory entries after index to index
   /// h->elems[h->count] points to the end of the file
   size_t entry_size = (size_t)(h->elems[idx+1] - h->elems[idx]);
+  debug_msg("delete at: %d [%d]\n", idx, entry_size - 1);
   if (idx < h->count-1) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
