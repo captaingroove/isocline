@@ -54,6 +54,8 @@ ic_private void history_free( history_t* h ) {
   h->elems = NULL;
   h->len = 0;
   munmap(h->fmem, h->fmem_size);
+  /// FIXME h->fsize is wrong when truncating the history file on exit
+  // ftruncate(h->fd, h->fsize);
   close(h->fd);
   mem_free(h->mem, h->fname);
   h->fname = NULL;

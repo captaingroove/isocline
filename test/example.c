@@ -52,7 +52,7 @@ int main()
   // ic_enable_hint(false);
 
   /// Allowing duplicates for debugging purposes, for now
-  // ic_enable_history_duplicates(true);
+  ic_enable_history_duplicates(true);
 
   // run until empty input
   char* input;
