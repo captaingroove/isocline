@@ -189,7 +189,7 @@ ic_private void history_clear(history_t* h) {
 
 /// TODO do character conversion here
 ic_private const char* history_get( const history_t* h, ssize_t n ) {
-  if (n < 0 || n >= h->count) return NULL;
+  if (n <= 0 || n > h->count) return NULL;
   ssize_t i = h->count - n;
   ssize_t entry_size = h->elems[i+1] - h->elems[i];
   char* ret = mem_zalloc(h->mem, entry_size);
@@ -214,8 +214,6 @@ static const char *sstrstr(const char *haystack, const char *needle, ssize_t len
     return NULL;
 }
 
-/// FIXME search ruins the prompt ...
-/// FIXME search strings are pushed to history
 /// Returns:
 ///   hidx: index of history entry found
 ///   hpos: position in found history entry where search string was found
@@ -383,7 +381,8 @@ ic_private void history_load( history_t* h ) {
     h->count++;
   }
   /// Save a pointer to the end of the file (last newline)
-  h->elems[h->count] = base - 1;
+  // h->elems[h->count] = base - 1;
+  h->elems[h->count] = base;
   debug_msg("scanned %d history entries\n", h->count);
   // stringbuf_t* sbuf = sbuf_new(h->mem);
   // if (sbuf != NULL) {

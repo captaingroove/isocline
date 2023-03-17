@@ -24,6 +24,9 @@ static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs )
   else {
     eb->history_idx += ofs;
     sbuf_replace(eb->input, entry);
+#ifdef IC_HIST_IMPL_MMAP
+    mem_free(env->mem, entry);
+#endif
     if (ofs > 0) {
       // at end of first line when scrolling up
       ssize_t end = sbuf_find_line_end(eb->input,0);
@@ -34,9 +37,6 @@ static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs )
     }
     edit_refresh(env, eb);
   }
-#ifdef IC_HIST_IMPL_MMAP
-  mem_free(env->mem, entry);
-#endif
 }
 
 static void edit_history_prev(ic_env_t* env, editor_t* eb) {
