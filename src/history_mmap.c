@@ -19,7 +19,7 @@
 
 /// TODO properly handle max history entries and max history file size
 #define IC_MAX_HISTORY        (1e5)
-#define IC_MAX_HISTFILE_SIZE  (1024*1e4)
+#define IC_MAX_HISTFILE_SIZE  (2*1024*1e3)
 // #define IC_MAX_HISTFILE_SIZE  (1e6)
 // #define IC_AVG_ENTRY_LEN (100)
 // #define IC_MMAP_SIZE     (IC_MAX_HISTORY * IC_AVG_ENTRY_LEN)
@@ -78,7 +78,7 @@ ic_private ssize_t history_count(const history_t* h) {
 static void update_file_size( history_t *h, size_t delta_size )
 {
   (void)h; (void)delta_size;
-  // h->fsize += delta_size;
+  h->fsize += delta_size;
   // ftruncate(h->fd, (off_t)h->fsize);
 }
 
@@ -107,12 +107,16 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
   /// Substract length of entry at index from all elems pointers after index
+  *(char *)h->elems[h->count] = '\0';
   h->count--;
   for (ssize_t i = idx; i < h->count; i++) {
     h->elems[i] -= entry_size;
   }
   /// Pointer to eof should point to last newline, not first character of next entry
-  h->elems[h->count]--;
+  h->elems[h->count] -= entry_size + 1;
+  // h->elems[h->count] -= entry_size;
+  // *h->elems[h->count] = '\n';
+  ic_memset((char *)h->elems[h->count] + 1, '\0', (ssize_t)entry_size);
   update_file_size(h, -entry_size);
 
   // mem_free(h->mem, h->elems[idx]);
@@ -187,13 +191,14 @@ ic_private void history_clear(history_t* h) {
   history_remove_last_n( h, h->count );
 }
 
+/// TODO history_get() returned string now needs to be freed ...
 /// TODO do character conversion here
 ic_private const char* history_get( const history_t* h, ssize_t n ) {
   if (n <= 0 || n > h->count) return NULL;
   ssize_t i = h->count - n;
   ssize_t entry_size = h->elems[i+1] - h->elems[i];
   char* ret = mem_zalloc(h->mem, entry_size);
-  memcpy(ret, h->elems[i], entry_size - 1);
+  memcpy(ret, h->elems[i], (size_t)(entry_size - 1));
   debug_msg("history_get at [%d]: %s [%d]\n", i, ret, entry_size - 1);
   // ret[entry_size] = '\0';
   return ret;
