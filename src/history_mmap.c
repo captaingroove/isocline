@@ -16,6 +16,7 @@
 #include "history.h"
 #include "stringbuf.h"
 
+
 /// TODO properly handle max history entries and max history file size
 #define IC_MAX_HISTORY        (1e5)
 #define IC_MAX_HISTFILE_SIZE  (1024)
@@ -81,6 +82,8 @@ static void update_file_size( history_t *h, size_t delta_size )
 ic_private bool history_update( history_t* h, const char* entry ) {
   if (entry==NULL) return false;
   /// FIXME why do we need to remove last entry here?
+  /// ... it seems like history_update() is called when history_push()
+  /// should be called ... (see editline.c or others)
   // history_remove_last(h);
   history_push(h,entry);
   //debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
@@ -90,17 +93,23 @@ ic_private bool history_update( history_t* h, const char* entry ) {
 }
 
 static void history_delete_at( history_t* h, ssize_t idx ) {
+  debug_msg("delete at: %d\n", idx);
+  // return;
+
   if (idx < 0 || idx >= h->count) return;
   /// Move memory entries after index to index
   /// h->elems[h->count] points to the end of the file
+  size_t entry_size = (size_t)(h->elems[idx+1] - h->elems[idx]);
   if (idx < h->count-1) {
     memmove((void*)h->elems[idx], h->elems[idx+1], (size_t)(h->elems[h->count] - h->elems[idx+1]));
   }
-  size_t entry_size = (size_t)(h->elems[idx+1] - h->elems[idx]);
   /// Substract length of entry at index from all elems pointers after index
-  for (ssize_t i = idx+1; i <= h->count; i++) {
-    h->elems[i-1] -= entry_size;
+  h->count--;
+  for (ssize_t i = idx; i < h->count; i++) {
+    h->elems[i] -= entry_size;
   }
+  /// Pointer to eof should point to last newline, not first character of next entry
+  h->elems[h->count]--;
   update_file_size(h, -entry_size);
 
   // mem_free(h->mem, h->elems[idx]);
@@ -108,11 +117,9 @@ static void history_delete_at( history_t* h, ssize_t idx ) {
     // h->elems[i-1] = h->elems[i];
   // }
 
-  h->count--;
 }
 
 /// TODO do character conversion here
-/// TODO implement duplicate removal with memory map (replace strcmp())
 ic_private bool history_push( history_t* h, const char* entry ) {
   ssize_t entry_size = ic_strlen(entry);
   if (entry_size == 0) return true;
@@ -120,7 +127,12 @@ ic_private bool history_push( history_t* h, const char* entry ) {
   // remove any older duplicate
   if (!h->allow_duplicates) {
     for( int i = 0; i < h->count; i++) {
-      if (strcmp(h->elems[i],entry) == 0) {
+      // if (strcmp(h->elems[i],entry) == 0) {
+      ssize_t elem_size = h->elems[i+1] - h->elems[i] - 1;
+      if (entry_size == elem_size) debug_msg("found entry %d with same size\n", i);
+      if (entry_size == elem_size && memcmp(h->elems[i], entry, (size_t)entry_size) == 0) {
+        debug_msg("deleting entry %d\n", i);
+        /// FIXME disabled for now
         history_delete_at(h,i);
       }
     }
@@ -179,14 +191,29 @@ ic_private const char* history_get( const history_t* h, ssize_t n ) {
   return h->elems[h->count - n - 1];
 }
 
-/// TODO replace strstr() with s.th. like GNU libc memmem()
+static const char *sstrstr(const char *haystack, const char *needle, ssize_t length)
+{
+    ssize_t needle_length = (ssize_t)strlen(needle);
+    ssize_t i;
+    for (i = 0; i < length; i++) {
+        if (i + needle_length > length) {
+            return NULL;
+        }
+        if (strncmp(&haystack[i], needle, (size_t)needle_length) == 0) {
+            return &haystack[i];
+        }
+    }
+    return NULL;
+}
+
 ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
   const char* p = NULL;
   ssize_t i;
   if (backward) {
     for( i = from; i < h->count; i++ ) {
       // p = strstr( history_get(h,i), search);
-      // p = memem(
+      p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
+      // p = memmem(
         // history_get(h,i), history_get(h,i+1) - history_get(h,i),
         // search, strlen(search));
       if (p != NULL) break;
@@ -194,7 +221,11 @@ ic_private bool history_search( const history_t* h, ssize_t from /*including*/, 
   }
   else {
     for( i = from; i >= 0; i-- ) {
-      p = strstr( history_get(h,i), search);
+      // p = strstr( history_get(h,i), search);
+      p = sstrstr( history_get(h,i), search, history_get(h,i+1) - history_get(h,i));
+      // p = memmem(
+        // history_get(h,i), history_get(h,i+1) - history_get(h,i),
+        // search, strlen(search));
       if (p != NULL) break;
     }
   }
