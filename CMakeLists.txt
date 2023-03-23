@@ -13,8 +13,15 @@ option(IC_DEBUG_ASAN        "Build with address sanitizer" OFF)
 option(IC_DEBUG_MSG         "Enable printing debug messages stderr (only if also ISOCLINE_DEBUG=1 is set in the environment)" ON)
 option(IC_SEPARATE_OBJS     "Compile with separate object files instead of one (warning: exports internal symbols)" OFF)
 
-set(ic_sources          src/isocline.c)    
-set(ic_example_sources  test/example.c test/test_colors.c)
+set(ic_version "0.1")
+set(ic_sources             src/isocline.c)
+set(ic_example_sources     test/example.c test/test_colors.c)
+set(ic_hist_impl_sources   src/history.c)
+if(IC_HIST_IMPL MATCHES IC_HIST_IMPL_SQLITE)
+  set(ic_hist_impl_sources src/history_sqlite.c)
+  add_definitions(-DIC_HIST_IMPL_SQLITE)
+  find_package(SQLite3 REQUIRED)
+endif()
 
 # -----------------------------------------------------------------------------
 # Initial definitions
@@ -32,7 +39,7 @@ if(IC_SEPARATE_OBJS)
               src/completers.c
               src/editline.c
               src/highlight.c
-              src/history.c
+              ${ic_hist_impl_sources}
               src/stringbuf.c
               src/term.c
               src/tty_esc.c
@@ -147,6 +154,9 @@ target_compile_definitions(isocline PRIVATE ${ic_cdefs})
 target_include_directories(isocline PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
+if(IC_HIST_IMPL MATCHES IC_HIST_IMPL_SQLITE)
+target_link_libraries(isocline SQLite::SQLite3)
+endif()
 
 add_executable(example test/example.c)
 target_compile_options(example PRIVATE ${ic_cflags})

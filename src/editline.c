@@ -593,6 +593,7 @@ static void edit_cursor_row_up(ic_env_t* env, editor_t* eb) {
   rowcol_t rc;
   edit_get_rowcol( env, eb, &rc);
   if (rc.row == 0) {
+    /// FIXME skip the latest history entry if already shown by hint
     edit_history_prev(env,eb);
   }
   else {
@@ -838,6 +839,27 @@ static void edit_insert_char(ic_env_t* env, editor_t* eb, char c) {
 
 #include "editline_completion.c"
 
+static void edit_move_hint_to_input(ic_env_t* env, editor_t* eb)
+{
+  (void)env;
+  // ssize_t start = sbuf_find_word_start(eb->hint, 0);
+  // ssize_t start = 1;
+  // ssize_t end = sbuf_find_word_end(eb->hint, start);
+  // debug_msg("edit_move_hint_to_input(), next word slice in '%s': [%d, %d]\n", sbuf_string(eb->hint), start, end);
+  char next_word[64] = {0};
+  // char *next_word_p = strtok_r((char *)sbuf_string(eb->hint), " ", &next_word);
+  char *next_word_p = strtok((char *)sbuf_string(eb->hint), " ");
+  sprintf(next_word, " %s", next_word_p);
+  debug_msg("edit_move_hint_to_input(), next word '%s'\n", next_word_p);
+  if (!next_word_p) return;
+  // eb->pos = end;
+  eb->pos += (ssize_t)strlen(next_word_p) + 1;
+  sbuf_replace(eb->hint, sbuf_string(eb->hint) + strlen(next_word_p) + 1);
+  // sbuf_append(eb->input, sbuf_string(sbuf_split_at(eb->hint, end - start)));
+  sbuf_append(eb->input, next_word);
+  edit_refresh(env,eb);
+  edit_cursor_next_word(env, eb);
+}
 
 //-------------------------------------------------------------
 // Edit line: main edit loop
@@ -876,7 +898,7 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   edit_write_prompt(env, &eb, 0, false);   
 
   // always a history entry for the current input
-  history_push(env->history, "");
+  // history_push(env->history, "");
 
   // process keys
   code_t c;          // current key code
@@ -909,14 +931,17 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       edit_resize(env,&eb);            
     }
 
+    /// FIXME commenting out clearing the hint buffer, for now
+    /// ... but shouldn't this be moved into if() above anyway, only if tty resize ...?
     // clear hint only after a potential resize (so resize row calculations are correct)
     const bool had_hint = (sbuf_len(eb.hint) > 0);
-    sbuf_clear(eb.hint);
-    sbuf_clear(eb.hint_help);
+    // sbuf_clear(eb.hint);
+    // sbuf_clear(eb.hint_help);
 
-    // if the user tries to move into a hint with left-cursor or end, we complete it first
+    // if the user tries to move into a hint with right-cursor or end, we complete it first
     if ((c == KEY_RIGHT || c == KEY_END) && had_hint) {
-      edit_generate_completions(env, &eb, true);
+      edit_move_hint_to_input(env, &eb);
+      // edit_generate_completions(env, &eb, true);
       c = KEY_NONE;      
     }
 
@@ -966,10 +991,12 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       case WITH_ALT('?'):
         edit_generate_completions(env,&eb,false);
         break;
+#if 0
       case KEY_CTRL_R:
       case KEY_CTRL_S:
         edit_history_search_with_current_word(env,&eb);
         break;
+#endif
       case KEY_CTRL_P:
         edit_history_prev(env, &eb);
         break;
@@ -998,7 +1025,8 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       case KEY_RIGHT:
       case KEY_CTRL_F:
         if (eb.pos == sbuf_len(eb.input)) { 
-          edit_generate_completions( env, &eb, false );
+          edit_move_hint_to_input(env, &eb);
+          // edit_generate_completions( env, &eb, false );
         }
         else {
           edit_cursor_right(env,&eb);
@@ -1027,7 +1055,8 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
       case WITH_SHIFT(KEY_RIGHT):      
       case WITH_ALT('f'):
         if (eb.pos == sbuf_len(eb.input)) { 
-          edit_generate_completions( env, &eb, false );
+          edit_move_hint_to_input(env, &eb);
+          // edit_generate_completions( env, &eb, false );
         }
         else {
           edit_cursor_next_word(env,&eb);
@@ -1095,10 +1124,15 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
         else {
           debug_msg( "edit: ignore code: 0x%04x\n", c);
         }
+        const char* entry = history_get_with_prefix(env->history, 1, sbuf_string(eb.input));
+        if (entry) {
+          debug_msg( "history found: %s, edit_buf: %s\n", entry, sbuf_string(eb.input));
+          sbuf_replace(eb.hint, entry + sbuf_len(eb.input));
+          edit_refresh(env, &eb);
+        }
         break;
       }
     }
-
   }
 
   // goto end
@@ -1123,9 +1157,10 @@ static char* edit_line( ic_env_t* env, const char* prompt_text )
   }
 
   // update history
-  history_update(env->history, sbuf_string(eb.input));
+  // history_update(env->history, sbuf_string(eb.input));
+  history_push(env->history, sbuf_string(eb.input));
   if (res == NULL || sbuf_len(eb.input) <= 1) { ic_history_remove_last(); } // no empty or single-char entries
-  history_save(env->history);
+  // history_save(env->history);
 
   // free resources 
   editstate_done(env->mem, &eb.undo);

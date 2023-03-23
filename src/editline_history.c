@@ -12,18 +12,21 @@
 static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs ) 
 {
   if (eb->modified) { 
-    history_update(env->history, sbuf_string(eb->input)); // update first entry if modified
+    // history_update(env->history, sbuf_string(eb->input)); // update first entry if modified
+    history_push(env->history, sbuf_string(eb->input)); // update first entry if modified
     eb->history_idx = 0;          // and start again 
     eb->modified = false;    
   }
-  const char* entry = history_get(env->history,eb->history_idx + ofs);
-  // debug_msg( "edit: history: at: %d + %d, found: %s\n", eb->history_idx, ofs, entry);
+  // const char* entry = history_get(env->history,eb->history_idx + ofs);
+  const char* entry = history_get_with_prefix(env->history,eb->history_idx + ofs, sbuf_string(eb->input));
+  debug_msg( "edit: history: at: %d + %d, found: %s, edit_buf: %s\n", eb->history_idx, ofs, entry, sbuf_string(eb->input));
   if (entry == NULL) {
     term_beep(env->term);
   }
   else {
     eb->history_idx += ofs;
-    sbuf_replace(eb->input, entry);
+    // sbuf_replace(eb->input, entry);
+    sbuf_replace(eb->hint, entry + sbuf_len(eb->input));
     if (ofs > 0) {
       // at end of first line when scrolling up
       ssize_t end = sbuf_find_line_end(eb->input,0);
@@ -37,6 +40,8 @@ static void edit_history_at(ic_env_t* env, editor_t* eb, int ofs )
 }
 
 static void edit_history_prev(ic_env_t* env, editor_t* eb) {
+  // if (sbuf_len(eb->hint) > 0) edit_history_at(env,eb, 2 );
+  // else edit_history_at(env,eb, 1 );
   edit_history_at(env,eb, 1 );
 }
 
@@ -44,6 +49,7 @@ static void edit_history_next(ic_env_t* env, editor_t* eb) {
   edit_history_at(env,eb, -1 );
 }
 
+#if 0
 typedef struct hsearch_s {
   struct hsearch_s* next;
   ssize_t hidx;
@@ -91,7 +97,8 @@ static void edit_history_search(ic_env_t* env, editor_t* eb, char* initial ) {
 
   // update history
   if (eb->modified) { 
-    history_update(env->history, sbuf_string(eb->input)); // update first entry if modified
+    // history_update(env->history, sbuf_string(eb->input)); // update first entry if modified
+    history_push(env->history, sbuf_string(eb->input)); // update first entry if modified
     eb->history_idx = 0;               // and start again 
     eb->modified = false;
   }
@@ -258,3 +265,4 @@ static void edit_history_search_with_current_word(ic_env_t* env, editor_t* eb) {
   edit_history_search( env, eb, initial);
   mem_free(env->mem, initial);
 }
+#endif
