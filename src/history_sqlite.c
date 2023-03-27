@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>  
 #include <sys/stat.h>
+#include <time.h>
 #include <sqlite3.h>
 
 #include "../include/isocline.h"
@@ -34,8 +35,8 @@ struct history_s {
 };
 
 static const char *db_tables[] = {
-  "create table if not exists cmd      (cid integer, ts integer, cmd text)",
-  "create index if not exists cmdididx on cmd(cid, ts)",
+  "create table if not exists cmds (cid integer, ts integer, cmd text)",
+  "create index if not exists cmdididx on cmds(cid, ts)",
   NULL
 };
 
@@ -49,21 +50,25 @@ enum db_stmt {
   DB_INS_CMD,
   DB_MAX_ID_CMD,
   DB_COUNT_CMD,
-  DB_GET_CMD,
   DB_GET_PREF_CNT,
   DB_GET_PREF_CMD,
   DB_GET_CMD_ID,
+  DB_DEL_CMD_ID,
+  DB_DEL_ALL,
+  DB_UPD_TS,
   DB_STMT_CNT,
 };
 
 static const struct db_query_t db_queries[] = {
-  { DB_INS_CMD,           "insert into cmd values (?,?,?)" },
-  { DB_MAX_ID_CMD,        "select max(cid) from cmd" },
-  { DB_COUNT_CMD,         "select count(cid) from cmd" },
-  { DB_GET_CMD,           "select cmd from cmd where cid = ?" },
-  { DB_GET_PREF_CNT,      "select count(cid) from cmd where cmd like ?" },
-  { DB_GET_PREF_CMD,      "select cmd from cmd where cmd like ? order by cid desc limit 1 offset ?" },
-  { DB_GET_CMD_ID,        "select cid from cmd where cmd = ? limit 1" },
+  { DB_INS_CMD,           "insert into cmds values (?,?,?)" },
+  { DB_MAX_ID_CMD,        "select max(cid) from cmds" },
+  { DB_COUNT_CMD,         "select count(cid) from cmds" },
+  { DB_GET_PREF_CNT,      "select count(cid) from cmds where cmd like ?" },
+  { DB_GET_PREF_CMD,      "select cmd from cmds where cmd like ? order by ts desc, cid desc limit 1 offset ?" },
+  { DB_GET_CMD_ID,        "select cid from cmds where cmd = ? limit 1" },
+  { DB_DEL_CMD_ID,        "delete from cmds where cid = ?" },
+  { DB_DEL_ALL,           "delete from cmds" },
+  { DB_UPD_TS,            "update cmds set ts = ? where cid = ?" },
   { DB_STMT_CNT,          "" },
 };
 
@@ -188,16 +193,20 @@ ic_private void history_free(history_t* h) {
   mem_free(h->mem, h); // free ourselves
 }
 
-ic_private bool history_enable_duplicates( history_t* h, bool enable ) {
+ic_private bool history_enable_duplicates(history_t* h, bool enable) {
   bool prev = h->allow_duplicates;
   h->allow_duplicates = enable;
   return prev;
 }
 
-ic_private ssize_t history_count( const history_t* h ) {
-  db_exec(&h->db, DB_COUNT_CMD);
-  int count = db_out_int(&h->db, DB_COUNT_CMD, 1);
-  db_reset(&h->db, DB_COUNT_CMD);
+ic_private ssize_t history_count_with_prefix(const history_t* h, const char *prefix) {
+  char *prefix_param = mem_malloc(h->mem, ic_strlen(prefix) + 3);
+  sprintf(prefix_param, "%s%%", prefix);
+  db_in_txt(&h->db, DB_GET_PREF_CNT, 1, prefix_param);
+  db_exec(&h->db, DB_GET_PREF_CNT);
+  int count = db_out_int(&h->db, DB_GET_PREF_CNT, 1);
+  db_reset(&h->db, DB_GET_PREF_CNT);
+  mem_free(h->mem, prefix_param);
   return count;
 }
 
@@ -205,19 +214,15 @@ ic_private ssize_t history_count( const history_t* h ) {
 // push/clear
 //-------------------------------------------------------------
 
-/// NOTE history_update() is not needed and could be removed
-ic_private bool history_update( history_t* h, const char* entry ) {
-  if (entry==NULL) return false;
-  history_push(h,entry);
-  //debug_msg("history: update: with %s; now at %s\n", entry, history_get(h,0));
-  return true;
+static time_t get_current_ts(void)
+{
+  struct timespec curtime;
+  clock_gettime(CLOCK_REALTIME, &curtime);
+  return curtime.tv_sec;
 }
 
-
-/// TODO check if entry is already in cmd table, then update timestamp
-/// TODO add timestamp
 ic_private bool history_push( history_t* h, const char* entry ) {
-  if (entry==NULL || strlen(entry) == 0) return false;
+  if (entry==NULL || ic_strlen(entry) == 0) return false;
 
   if (!h->allow_duplicates) {
     db_in_txt(&h->db, DB_GET_CMD_ID, 1, entry);
@@ -228,6 +233,10 @@ ic_private bool history_push( history_t* h, const char* entry ) {
     db_reset(&h->db, DB_GET_CMD_ID);
     if (cid != -1) {
       debug_msg("duplicate entry: %s\n", entry);
+      db_in_int(&h->db, DB_UPD_TS, 1, get_current_ts());
+      db_in_int(&h->db, DB_UPD_TS, 2, cid);
+      db_exec(&h->db, DB_UPD_TS);
+      db_reset(&h->db, DB_UPD_TS);
       return false;
     }
   }
@@ -237,34 +246,33 @@ ic_private bool history_push( history_t* h, const char* entry ) {
   db_reset(&h->db, DB_MAX_ID_CMD);
 
   db_in_int(&h->db, DB_INS_CMD, 1, new_cid);
-  db_in_int(&h->db, DB_INS_CMD, 2, 0);
+  db_in_int(&h->db, DB_INS_CMD, 2, get_current_ts());
   db_in_txt(&h->db, DB_INS_CMD, 3, entry);
   db_exec(&h->db, DB_INS_CMD);
   db_reset(&h->db, DB_INS_CMD);
   return true;
 }
 
-/// NOTE history_remove_last_n() is not needed but could be implemented
-static void history_remove_last_n( history_t* h, ssize_t n ) {
-  (void)h;
-  if (n <= 0) return;
-}
-
-/// NOTE see history_remove_last_n()
 ic_private void history_remove_last(history_t* h) {
-  (void)h;
-  history_remove_last_n(h,1);
+  db_exec(&h->db, DB_MAX_ID_CMD);
+  int last_cid = db_out_int(&h->db, DB_MAX_ID_CMD, 1);
+  db_reset(&h->db, DB_MAX_ID_CMD);
+
+  db_in_int(&h->db, DB_DEL_CMD_ID, 1, last_cid);
+  db_exec(&h->db, DB_DEL_CMD_ID);
+  db_reset(&h->db, DB_DEL_CMD_ID);
 }
 
-/// NOTE see history_remove_last_n()
 ic_private void history_clear(history_t* h) {
-  (void)h;
+  db_exec(&h->db, DB_DEL_ALL);
+  db_reset(&h->db, DB_DEL_ALL);
 }
 
 /// Parameter n is the history command index from latest to oldest, starting with 1
-/// NOTE need to free the returned string at the callsite
+/// NOTE need to free the returned string at the callsite with this backend
 ic_private const char* history_get_with_prefix( const history_t* h, ssize_t n, const char* prefix ) {
-  char prefix_param[64] = {0};
+  if (n <= 0) return NULL;
+  char *prefix_param = mem_malloc(h->mem, ic_strlen(prefix) + 3);
   sprintf(prefix_param, "%s%%", prefix);
   db_in_txt(&h->db, DB_GET_PREF_CNT, 1, prefix_param);
   db_exec(&h->db, DB_GET_PREF_CNT);
@@ -277,36 +285,28 @@ ic_private const char* history_get_with_prefix( const history_t* h, ssize_t n, c
   if (ret != DB_ROW) return NULL;
   const char* entry = mem_strdup(h->mem, (const char*)db_out_txt(&h->db, DB_GET_PREF_CMD, 1));
   db_reset(&h->db, DB_GET_PREF_CMD);
+  mem_free(h->mem, prefix_param);
   return entry;
-}
-
-/// NOTE history_search() is not needed and could be removed
-ic_private bool history_search( const history_t* h, ssize_t from /*including*/, const char* search, bool backward, ssize_t* hidx, ssize_t* hpos ) {
-  (void)h; (void)from; (void)search; (void)backward; (void)hidx; (void) hpos;
-  return true;
-}
-
-//-------------------------------------------------------------
-// 
-//-------------------------------------------------------------
-
-ic_private void history_load_from(history_t* h, const char* fname, long max_entries ) {
-  (void)max_entries;
-  h->fname = mem_strdup(h->mem,fname);
-  history_load(h);
 }
 
 //-------------------------------------------------------------
 // save/load history to file
 //-------------------------------------------------------------
 
-ic_private void history_load( history_t* h ) {
+ic_private void history_load_from(history_t* h, const char* fname, long max_entries ) {
+  ic_unused(max_entries);
+  h->fname = mem_strdup(h->mem,fname);
   if (db_open(&h->db, h->fname) != DB_OK) return;
   if (!create_tables(&h->db)) return;
   db_prepare_stmts(&h->db, db_queries, DB_STMT_CNT);
 }
 
-/// NOTE history_save() is not needed and could be removed
+/// function history_load() is not needed ...
+ic_private void history_load(history_t* h) {
+  ic_unused(h);
+}
+
+/// function history_save() is not needed with this backend
 ic_private void history_save( const history_t* h ) {
-  (void)h;
+  ic_unused(h);
 }
